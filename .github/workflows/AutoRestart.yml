@@ -2,9 +2,8 @@ name: Rustix Auto Restart
 
 on:
   schedule:
-    # 每小时运行一次（北京时间整点）
     - cron: '0 */1 * * *'
-  workflow_dispatch: # 允许手动触发
+  workflow_dispatch:
 
 jobs:
   run-script:
@@ -27,58 +26,47 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: 🛠️ 安装系统依赖（包含代理所需工具）
+      - name: 🛠️ 安装系统依赖
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y \
-            jq \
-            wget \
-            unzip \
-            curl
+          sudo apt-get install -y jq wget unzip curl
 
       - name: 🐍 安装 Python 依赖
         run: |
           pip install playwright requests
           playwright install chromium
 
-      # ========== 🛡️ 启动 Xray 代理（新增） ==========
-      - name: 🛡️ 启动 Xray 代理转发（基于 VMESS_LINK）
+      # ========== 启动 Xray 代理（可选） ==========
+      - name: 🛡️ 启动代理（基于 VMESS_LINK）
         env:
           VMESS_LINK: ${{ secrets.VMESS_LINK }}
         run: |
           if [ -z "${VMESS_LINK}" ]; then
-            echo "⚠️ 警告：未设置 VMESS_LINK，将不使用代理直接访问。"
-            exit 0  # 不强制要求代理，可跳过
+            echo "⚠️ 未设置代理，将直连。"
+            exit 0
           fi
 
-          # 1. 智能判定是 vmess:// 还是原生 JSON
           if [[ "${VMESS_LINK}" == vmess://* ]]; then
-            echo "🔮 检测到 vmess:// 协议链接，进行 Base64 解码..."
             CLEAN_B64=$(echo "${VMESS_LINK}" | sed 's/vmess:\/\///' | tr -d '\r\n ')
             JSON_STR=$(echo "${CLEAN_B64}" | base64 -d 2>/dev/null || echo "${CLEAN_B64}=" | base64 -d 2>/dev/null || echo "${CLEAN_B64}==" | base64 -d 2>/dev/null)
           else
-            echo "📄 检测到原生 JSON 文本，直接提取参数..."
             JSON_STR="${VMESS_LINK}"
           fi
 
-          # 验证 JSON 解析是否合法
           if ! echo "${JSON_STR}" | jq . >/dev/null 2>&1; then
-            echo "❌ 错误：节点数据解码失败或 JSON 格式不合法！"
+            echo "❌ 代理配置解析失败，请检查 VMESS_LINK 格式。"
             exit 1
           fi
 
-          # 2. 提取 Xray 所需的核心变量
           V_ADD=$(echo "${JSON_STR}" | jq -r '.add')
           V_PORT=$(echo "${JSON_STR}" | jq -r '.port')
           V_ID=$(echo "${JSON_STR}" | jq -r '.id')
           V_HOST=$(echo "${JSON_STR}" | jq -r '.host // .sni')
           V_PATH=$(echo "${JSON_STR}" | jq -r '.path')
 
-          # 3. 下载并解压 Xray 核心
           curl -L -o xray.zip https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip
           unzip -q xray.zip && chmod +x xray
 
-          # 4. 生成 Xray 标准 config.json
           cat << EOF > config.json
           {
             "inbounds": [{
@@ -117,33 +105,30 @@ jobs:
           }
           EOF
 
-          # 5. 后台静默启动 Xray
           nohup ./xray -config config.json > xray.log 2>&1 &
           sleep 4
+          echo "✅ 代理已启动（127.0.0.1:10809）"
+          curl -s -x http://127.0.0.1:10809 https://api.ipify.org || echo "⚠️ 代理连通测试失败"
 
-          # 6. 测试连通性
-          echo "✅ Xray 代理已在本地 10809 端口启动，测试出口 IP..."
-          curl -s -x http://127.0.0.1:10809 https://api.ipify.org || echo "⚠️ 连通测试失败，请确认节点是否有效"
-
-      # ========== 设置全局代理环境变量（供 Playwright 使用） ==========
       - name: 🌐 设置代理环境变量
         run: |
           echo "HTTP_PROXY=http://127.0.0.1:10809" >> $GITHUB_ENV
           echo "HTTPS_PROXY=http://127.0.0.1:10809" >> $GITHUB_ENV
-          echo "NO_PROXY=localhost,127.0.0.1" >> $GITHUB_ENV
+          echo "NO_PROXY=localhost,127.0.0.1,api.telegram.org" >> $GITHUB_ENV
 
       - name: 🚀 运行 AutoRestart.py
         env:
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
           ACCOUNTS_JSON: ${{ secrets.ACCOUNTS_JSON }}
-          # 代理已通过环境变量传入，无需额外配置
         run: python AutoRestart.py
 
-      - name: 📸 上传调试截图（可选）
+      - name: 📸 上传调试截图和HTML
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: debug-screenshots-${{ github.run_id }}
-          path: "*.png"
+          name: debug-${{ github.run_id }}
+          path: |
+            *.png
+            *.html
           retention-days: 3
