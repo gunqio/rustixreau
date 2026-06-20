@@ -10,8 +10,20 @@ jobs:
   run-script:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout current repository (if needed)
         uses: actions/checkout@v4
+        # 若当前仓库也有其他资源需要保留，则保留这一步；
+        # 若完全只用私库脚本，可忽略，但建议保留以便同时使用两个仓库的内容。
+
+      - name: Pull private repo script (AutoRestart.py)
+        env:
+          # 请提前在仓库 Settings -> Secrets and variables -> Actions 中创建 REPO_TOKEN
+          REPO_TOKEN: ${{ secrets.REPO_TOKEN }}
+        run: |
+          # 使用 raw 地址下载，并重命名为 AutoRestart.py（若源文件已是该名，则直接保存）
+          curl -H "Authorization: token $REPO_TOKEN" \
+               -L https://raw.githubusercontent.com/gunqio/zhiyong/main/AutoRestart.py \
+               -o AutoRestart.py
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -22,10 +34,11 @@ jobs:
         run: |
           pip install playwright requests
           playwright install chromium
+        # 若 AutoRestart.py 需要额外依赖，可在此补充
 
-      - name: Run script
+      - name: Run script (AutoRestart.py)
         env:
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
           ACCOUNTS_JSON: ${{ secrets.ACCOUNTS_JSON }}
-        run: python rustix.py
+        run: python AutoRestart.py
