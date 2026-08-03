@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
-      actions: write      # ← 必须，否则无法删除运行记录
+      actions: write
       contents: read
 
     steps:
