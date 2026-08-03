@@ -30,13 +30,11 @@ jobs:
           python-version: '3.12'
 
       - name: 🐍 安装 Python 依赖
-        run: |
-          pip install curl_cffi requests nodriver
+        run: pip install curl_cffi requests nodriver
 
       - name: 🌐 安装 Chromium
         run: |
           sudo apt-get update -qq
-          # 兼容新旧 Ubuntu 版本的包名
           sudo apt-get install -y --no-install-recommends \
             fonts-liberation xdg-utils \
             libasound2t64 libatk-bridge2.0-0 libatk1.0-0 libcups2 \
@@ -50,19 +48,16 @@ jobs:
             libxcomposite1 libxdamage1 libxrandr2 \
             libgbm1 libxss1 libgtk-3-0
 
-      - name: 🐍 预下载 Chromium（nodriver 自动获取）
+      - name: 🐍 预下载 Chromium
         run: |
-          python3 << 'PYEOF'
-import asyncio
-import nodriver as uc
-
-async def dl():
-    b = await uc.start(headless=True, no_sandbox=True)
-    await b.stop()
-
-asyncio.run(dl())
-print('✅ Chromium 下载完成')
-PYEOF
+          python3 -c "
+          import asyncio, nodriver as uc
+          async def dl():
+              b = await uc.start(headless=True, no_sandbox=True)
+              await b.stop()
+          asyncio.run(dl())
+          print('✅ Chromium 下载完成')
+          "
 
       - name: 🛡️ 启动代理（基于 VMESS_LINK）
         env:
@@ -72,29 +67,25 @@ PYEOF
             echo "⚠️ 未设置代理，将直连。"
             exit 0
           fi
-
           if [[ "${VMESS_LINK}" == vmess://* ]]; then
             CLEAN_B64=$(echo "${VMESS_LINK}" | sed 's/vmess:\/\///' | tr -d '\r\n ')
             JSON_STR=$(echo "${CLEAN_B64}" | base64 -d 2>/dev/null || echo "${CLEAN_B64}=" | base64 -d 2>/dev/null || echo "${CLEAN_B64}==" | base64 -d 2>/dev/null)
           else
             JSON_STR="${VMESS_LINK}"
           fi
-
           if ! echo "${JSON_STR}" | jq . >/dev/null 2>&1; then
             echo "❌ 代理配置解析失败，请检查 VMESS_LINK 格式。"
             exit 1
           fi
-
           V_ADD=$(echo "${JSON_STR}" | jq -r '.add')
           V_PORT=$(echo "${JSON_STR}" | jq -r '.port')
           V_ID=$(echo "${JSON_STR}" | jq -r '.id')
           V_HOST=$(echo "${JSON_STR}" | jq -r '.host // .sni')
           V_PATH=$(echo "${JSON_STR}" | jq -r '.path')
-
           curl -L -o xray.zip https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip
           unzip -q xray.zip && chmod +x xray
-
-          cat << EOF > config.json
+          VMESS_PORT=${V_PORT:-443}
+          cat > config.json <<XCFG
           {
             "inbounds": [{
               "port": 10809,
@@ -106,7 +97,7 @@ PYEOF
               "settings": {
                 "vnext": [{
                   "address": "${V_ADD}",
-                  "port": ${V_PORT:-443},
+                  "port": ${VMESS_PORT},
                   "users": [{
                     "id": "${V_ID}",
                     "alterId": 0,
@@ -130,8 +121,7 @@ PYEOF
               }
             }]
           }
-          EOF
-
+          XCFG
           nohup ./xray -config config.json > xray.log 2>&1 &
           sleep 4
           echo "✅ 代理已启动（127.0.0.1:10809）"
@@ -151,7 +141,6 @@ PYEOF
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const keep = 3;
-            
             const allRuns = await github.paginate(
               github.rest.actions.listWorkflowRunsForRepo,
               {
@@ -160,16 +149,12 @@ PYEOF
                 per_page: 100
               }
             );
-            
             const runs = allRuns
               .filter(r => r.name === context.workflow && r.id !== context.runId)
               .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-            
             const toDelete = runs.slice(keep);
-            
             console.log(`🔢 当前工作流共 ${runs.length + 1} 条记录（含本次）`);
             console.log(`🗑️  将删除 ${toDelete.length} 条旧记录，保留最新 ${keep} 条`);
-            
             for (const run of toDelete) {
               try {
                 await github.rest.actions.deleteWorkflowRun({
