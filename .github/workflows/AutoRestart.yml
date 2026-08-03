@@ -33,11 +33,36 @@ jobs:
         run: |
           pip install curl_cffi requests nodriver
 
-      - name: 🌐 安装 Google Chrome
+      - name: 🌐 安装 Chromium
         run: |
-          wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
-          sudo apt-get install -y ./google-chrome-stable_current_amd64.deb || sudo apt-get install -fy
-          google-chrome --version
+          sudo apt-get update -qq
+          # 兼容新旧 Ubuntu 版本的包名
+          sudo apt-get install -y --no-install-recommends \
+            fonts-liberation xdg-utils \
+            libasound2t64 libatk-bridge2.0-0 libatk1.0-0 libcups2 \
+            libdbus-1-3 libgdk-pixbuf2.0-0 libnspr4 libnss3 \
+            libxcomposite1 libxdamage1 libxrandr2 \
+            libgbm1 libxss1 libgtk-3-0 || \
+          sudo apt-get install -y --no-install-recommends \
+            fonts-liberation xdg-utils \
+            libasound2 libatk-bridge2.0-0 libatk1.0-0 libcups2 \
+            libdbus-1-3 libgdk-pixbuf2.0-0 libnspr4 libnss3 \
+            libxcomposite1 libxdamage1 libxrandr2 \
+            libgbm1 libxss1 libgtk-3-0
+
+      - name: 🐍 预下载 Chromium（nodriver 自动获取）
+        run: |
+          python3 << 'PYEOF'
+import asyncio
+import nodriver as uc
+
+async def dl():
+    b = await uc.start(headless=True, no_sandbox=True)
+    await b.stop()
+
+asyncio.run(dl())
+print('✅ Chromium 下载完成')
+PYEOF
 
       - name: 🛡️ 启动代理（基于 VMESS_LINK）
         env:
