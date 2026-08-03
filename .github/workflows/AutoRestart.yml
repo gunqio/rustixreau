@@ -26,15 +26,8 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: 🛠️ 安装系统依赖
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y jq wget unzip curl
-
       - name: 🐍 安装 Python 依赖
-        run: |
-          pip install playwright requests
-          playwright install chromium
+        run: pip install curl_cffi requests
 
       # ========== 启动 Xray 代理（可选） ==========
       - name: 🛡️ 启动代理（基于 VMESS_LINK）
@@ -110,25 +103,10 @@ jobs:
           echo "✅ 代理已启动（127.0.0.1:10809）"
           curl -s -x http://127.0.0.1:10809 https://api.ipify.org || echo "⚠️ 代理连通测试失败"
 
-      - name: 🌐 设置代理环境变量
-        run: |
-          echo "HTTP_PROXY=http://127.0.0.1:10809" >> $GITHUB_ENV
-          echo "HTTPS_PROXY=http://127.0.0.1:10809" >> $GITHUB_ENV
-          echo "NO_PROXY=localhost,127.0.0.1,api.telegram.org" >> $GITHUB_ENV
-
       - name: 🚀 运行 AutoRestart.py
         env:
+          API_KEY: ${{ secrets.API_KEY }}
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
-          ACCOUNTS_JSON: ${{ secrets.ACCOUNTS_JSON }}
+          PROXY_URL: ${{ secrets.PROXY_URL }}
         run: python AutoRestart.py
-
-      - name: 📸 上传调试截图和HTML
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: debug-${{ github.run_id }}
-          path: |
-            *.png
-            *.html
-          retention-days: 3
