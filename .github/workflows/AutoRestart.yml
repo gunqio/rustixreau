@@ -105,7 +105,8 @@ jobs:
           API_KEY: ${{ secrets.API_KEY }}
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
-          PROXY_URL: ${{ secrets.PROXY_URL }}
+          # 关键：显式传入代理地址，匹配 xray 的 HTTP 代理端口
+          PROXY_URL: ${{ secrets.PROXY_URL || 'http://127.0.0.1:10809' }}
         run: python AutoRestart.py
 
       - name: 🧹 清理旧运行记录（保留最新3个）
